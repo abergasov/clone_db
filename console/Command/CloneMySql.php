@@ -117,15 +117,25 @@ class CloneMySql extends Command {
                 return;
             }
         }
-        $res = $connect->run("SHOW KEYS FROM {$tableName} WHERE Key_name = 'PRIMARY'");
+        $res = $connect->run("SHOW KEYS FROM `{$tableName}` WHERE Key_name = 'PRIMARY'");
         if (!is_array($res)) {
             $this->logger->error("{$tableName} - can't get primary key 4 table");
             return;
         }
+        $key = null;
         if (count($res) === 0) {
+            $ds = $connect->run("SHOW COLUMNS FROM `{$tableName}` LIKE 'id'");
+            if (count($ds) > 0) {
+                $key = 'id';
+            } else {
+                return;
+            }
+        } else {
+            $key = $res[0]['Column_name'];
+        }
+        if (is_null($key)) {
             return;
         }
-        $key = $res[0]['Column_name'];
         $offset = $this->progressExec[$params['name']][$tableName]['rows'];
         $sql = "SELECT * FROM `{$tableName}` ORDER BY `${key}` DESC LIMIT ?, ?";
         $result = $connect->run($sql, $offset, self::ROWS_LIMIT);
