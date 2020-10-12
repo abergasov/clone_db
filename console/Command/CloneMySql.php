@@ -52,11 +52,12 @@ class CloneMySql extends Command {
 
     private function scanBase(EasyDB $connect, array $dbConf, string $name) {
         $sql = "SELECT table_name, table_rows, DATA_LENGTH FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?";
-        $result = $connect->run($sql, $name);
+        $result = $connect->run($sql, $dbConf['name']);
         if (!is_array($result)) {
             $this->logger->warning("expected array for $name. scan base will skip");
             return;
         }
+        $connectName = $name;
         foreach ($result as $table) {
             $name = $table['table_name'];
             // проверяем, что б таблица не была в списке неотслеживаемых
@@ -64,28 +65,28 @@ class CloneMySql extends Command {
                 $this->logger->notice("table {$name} is in ignore list");
                 continue;
             }
-            $tblOk = isset($this->progressExec[$dbConf['name']]) && isset($this->progressExec[$dbConf['name']][$name]);
+            $tblOk = isset($this->progressExec[$connectName]) && isset($this->progressExec[$connectName][$name]);
             if (!$tblOk) {
-                $this->logger->info("{$name} - start create table");
-                $this->processTable($name, $dbConf, $connect);
-                $this->logger->info("{$name} - create table ok");
+                $this->logger->info("{$connectName} {$name} - start create table");
+                $this->processTable($name, $dbConf, $connect, $connectName);
+                $this->logger->info("{$connectName} {$name} - create table ok");
             }
             // проверяем, что не надо из таблицы тянуть данные
             if (in_array($name, $dbConf['ignore_data_from_tables'])) {
-                $this->logger->info("{$name} - skip data for table");
+                $this->logger->info("{$connectName} {$name} - skip data for table");
                 continue;
             }
-            $tblOk = isset($this->progressExec[$dbConf['name']]) && isset($this->progressExec[$dbConf['name']][$name]);
+            $tblOk = isset($this->progressExec[$connectName]) && isset($this->progressExec[$connectName][$name]);
             if ($tblOk) {
-                $this->logger->info("{$name} - start copy rows");
-                $this->processTableRows($name, $dbConf, $connect);
-                $rows = $this->progressExec[$dbConf['name']][$name]['rows'];
-                $this->logger->info("{$name} - copy rows is done (~${rows})");
+                $this->logger->info("{$connectName} {$name} - start copy rows");
+                $this->processTableRows($name, $dbConf, $connect, $connectName);
+                $rows = $this->progressExec[$connectName][$name]['rows'];
+                $this->logger->info("{$connectName} {$name} - copy rows is done (~${rows})");
             }
         }
     }
 
-    private function processTable(string $tableName, array $params, EasyDB $connect) {
+    private function processTable(string $tableName, array $params, EasyDB $connect, string $connectName) {
         $generateSql = $connect->run("SHOW CREATE TABLE `${tableName}`");
         if (!is_array($generateSql)) {
             return;
@@ -107,11 +108,11 @@ class CloneMySql extends Command {
         $this->localConnect->run('DROP TABLE IF EXISTS ' . $tableName);
         $this->localConnect->run('SET FOREIGN_KEY_CHECKS=1');
         $this->localConnect->run($sql);
-        $this->logProgressTableCreation($params['name'], $tableName);
+        $this->logProgressTableCreation($connectName, $tableName);
     }
 
-    private function processTableRows(string $tableName, array $params, EasyDB $connect) {
-        $rows = $this->progressExec[$params['name']][$tableName]['rows']; // сколько строк уже обработано
+    private function processTableRows(string $tableName, array $params, EasyDB $connect, string $connectName) {
+        $rows = $this->progressExec[$connectName][$tableName]['rows']; // сколько строк уже обработано
         if (in_array($tableName, $params['get_last_rows'])) {
             if ($rows > self::ROWS_LIMIT) {
                 return;
@@ -136,7 +137,7 @@ class CloneMySql extends Command {
         if (is_null($key)) {
             return;
         }
-        $offset = $this->progressExec[$params['name']][$tableName]['rows'];
+        $offset = $this->progressExec[$connectName][$tableName]['rows'];
         $sql = "SELECT * FROM `{$tableName}` ORDER BY `${key}` DESC LIMIT ?, ?";
         $result = $connect->run($sql, $offset, self::ROWS_LIMIT);
         if (!is_array($result)) {
@@ -144,11 +145,11 @@ class CloneMySql extends Command {
             return;
         }
         if (count($result) === 0) {
-            $this->logProgressTableInsert($params['name'], $tableName, 0, true);
+            $this->logProgressTableInsert($connectName, $tableName, 0, true);
             return;
         }
         $this->insertRows($result, $tableName);
-        $this->logProgressTableInsert($params['name'], $tableName, self::ROWS_LIMIT, count($result) < self::ROWS_LIMIT);
+        $this->logProgressTableInsert($connectName, $tableName, self::ROWS_LIMIT, count($result) < self::ROWS_LIMIT);
         if (in_array($tableName, $params['get_last_rows'])) {
             // если интересовало только последние строки выгрузить
             return;
@@ -158,7 +159,7 @@ class CloneMySql extends Command {
             return;
         }
         unset($result);
-        return $this->processTableRows($tableName, $params, $connect);
+        return $this->processTableRows($tableName, $params, $connect, $connectName);
     }
 
     private function insertRows(array $result, string $tableName) {
