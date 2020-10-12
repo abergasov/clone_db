@@ -1,0 +1,21 @@
+{
+  "require": {
+    "php": "^7.3.0",
+    "ext-curl": "*",
+    "ext-json": "*",
+    "ext-openssl": "*",
+    "ext-readline": "*",
+    "mervick/aes-everywhere": "^v1.1.3",
+    "paragonie/easydb": "^v2.11.0",
+    "robmorgan/phinx": "^0.12.4",
+    "symfony/console": "^5.1.7",
+    "symfony/yaml": "v2.8.52",
+    "ext-gd": "*",
+    "ext-pdo": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Console\\": "console/"
+    }
+  }
+}
